@@ -1,0 +1,236 @@
+openapi: 3.0.3
+
+info:
+  description: The keydungeon serverless API to store passwords.
+  version: 1.0.0
+  title: Keydungeon REST API
+
+servers:
+  - url: https://key.gerbenveenhof.nl/api
+    description: The keydungeon live API
+
+paths:
+  /user:
+    post:
+      tags:
+        - "user"
+      description: Create a new user
+      security: []
+      responses:
+        200:
+          description: Returns the info of the newly created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        400:
+          description: When the user has not been created, and returns an error
+
+  /user/{UUID}:
+    parameters:
+      - name: UUID
+        required: true
+        in: path
+        description: "**UUID**. *Example: 02c60b51-a30d-4eb5-9c31-30fac6c586cf*. The UUID of the given user."
+        schema:
+          type: string
+    get:
+      tags:
+        - "user"
+      description: Returns a given user by it's UUID
+      responses:
+        200:
+          description: The requested user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        404:
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - "user"
+      description: Patches the given user by it's UUID, only a logged in user can do this of itself
+      responses:
+        200:
+          description: Updated a user with the given info
+        404:
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - "user"
+      description: Delete a given user by it's UUID, only the logged in user can do this of itself
+      responses:
+        200:
+          description: The requested user is deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        404:
+          $ref: "#/components/responses/NotFound"
+
+  /password:
+    get:
+      tags:
+        - "password"
+      description: Returns a list of passwords (can be paged with parameters)
+      responses:
+        200:
+          description: Returns a list of passwords (optionally paginated)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Password"
+    post:
+      tags:
+        - "password"
+      description: Create a new password for the user in the authentication token
+      responses:
+        200:
+          description: Returns the info of the newly created password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Password"
+        400:
+          description: When the password has not been created, and returns an error
+
+  /password/{UUID}:
+    parameters:
+      - name: UUID
+        required: true
+        in: path
+        description: "**UUID**. *Example: 02c60b51-a30d-4eb5-9c31-30fac6c586cf*. The UUID of the given user."
+        schema:
+          type: string
+    get:
+      tags:
+        - "password"
+      description: Return the given password
+      responses:
+        200:
+          description: Returns the password object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Password"
+        404:
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - "password"
+      description: Patches the given password by it's UUID, only a logged in user can do this of itself
+      responses:
+        200:
+          description: Updated a password with the given info
+        404:
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - "password"
+      description: Delete a given UUID password
+      responses:
+        200:
+          description: The password has been deleted
+        404:
+          $ref: "#/components/responses/NotFound"
+
+  /event:
+    get:
+      tags:
+        - "event"
+      description: List all events from a user's token
+      responses:
+        200:
+          description: Returns a list of the events based, orderded by latest (time)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Event"
+
+    post:
+      tags:
+        - "event"
+      description: Create a new event coupled to a user
+      security: []
+      responses:
+        200:
+          description: Returns the info of the newly created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        400:
+          description: When the event has not been created, and returns an error
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Formatted as a UUID
+        email:
+          type: string
+        password:
+          type: string
+
+    Password:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Formatted as a UUID
+        name:
+          type: string
+        url:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Formatted as a UUID
+        eventType:
+          type: string
+        metadata:
+          type: string
+
+    EventType:
+      type: string
+      enum:
+        - sign-in
+        - sign-out
+        - create-password
+        - show-password
+        - edit-password
+        - delete-password
+        - create-user
+        - show-user
+        - edit-user
+        - delete-user
+
+  responses:
+    NotFound:
+      description: Entity not found
+
+  securitySchemes:
+    api_token:
+      description: The JTW token to access content of a user
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - api_token: []
