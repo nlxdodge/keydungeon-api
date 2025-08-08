@@ -173,7 +173,7 @@ components:
     User:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           description: Formatted as a UUID
         email:
@@ -184,7 +184,7 @@ components:
     Password:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           description: Formatted as a UUID
         name:
@@ -199,27 +199,28 @@ components:
     Event:
       type: object
       properties:
-        id:
+        uuid:
           type: string
           description: Formatted as a UUID
         eventType:
-          type: string
+          $ref: '#/components/schemas/EventType'
         metadata:
           type: string
+          description: JSON encoded metadata for the request.
 
     EventType:
       type: string
       enum:
-        - sign-in
-        - sign-out
-        - create-password
-        - show-password
-        - edit-password
-        - delete-password
-        - create-user
-        - show-user
-        - edit-user
-        - delete-user
+        - SignIn,
+        - SignOut,
+        - CreatePassword,
+        - ShowPassword,
+        - EditPassword,
+        - DeletePassword,
+        - CreateUser,
+        - ShowUser,
+        - EditUser,
+        - DeleteUser
 
   responses:
     NotFound:
