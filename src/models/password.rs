@@ -1,7 +1,11 @@
+use serde::Serialize;
+use secrecy::SecretString;
+
+#[derive(Serialize)]
 pub struct Password {
-    uuid: String,
-    icon: String,
-    url: String,
-    name: String,
-    password: String
+    pub uuid: String,
+    pub icon: String,
+    pub url: String,
+    pub name: String,
+    pub password: SecretString
 }
