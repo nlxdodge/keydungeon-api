@@ -1,30 +1,57 @@
-use axum::routing::get;
-use axum::{Json, Router};
-use secrecy::SecretString;
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    routing::{delete, get, patch, post},
+};
+use chrono::Local;
+use sqlx::{Pool, Postgres};
+use uuid::Uuid;
 
-use crate::models::password::Password;
+use crate::models::{password::Password, user::User};
 
-pub fn routing(router: Router) -> Router {
-    return router.route(
-        "/passwords",
-        get(get_passwords)
-            .post(save_password)
-            .put(edit_password)
-            .delete(remove_password),
-    );
+pub fn routing() -> Router<Pool<Postgres>> {
+    Router::new()
+        .route("/passwords/:uuid", get(get_passwords))
+        .route("/passwords/", post(save_password))
+        .route("/passwords/:uuid", patch(edit_password))
+        .route("/passwords/:uuid", delete(remove_password))
 }
 
-async fn get_passwords() -> Json<Vec<Password>> {
-    Json(vec![Password {
-        uuid: "test".to_string(),
-        url: "".to_string(),
-        icon: "".to_string(),
-        name: "".to_string(),
-        password: SecretString::new("test".to_owned()),
-    }])
+async fn get_passwords(
+    Path(uuid): Path<String>,
+    State(pool): State<Pool<Postgres>>,
+) -> Json<Vec<Password>> {
+    let passwords = sqlx::query_as::<_, Password>(
+        "SELECT uuid, icon, url, name, username, password FROM passwords WHERE uuid = ?",
+    )
+    .bind(uuid)
+    .fetch_all(&pool)
+    .await
+    .expect("Failed to fetch users");
+    Json(passwords)
 }
 
-async fn save_password() {}
+async fn save_password(
+    Path(user_uuid): Path<String>,
+    Json(payload): Json<Password>,
+    State(pool): State<Pool<Postgres>>,
+) -> Json<Vec<Password>> {
+    let passwords = sqlx::query_as::<_, Password>(
+        "insert into passwords(uuid=?, user_uuid=?, icon=?, url=?, name=?, username=?, password=?, timestamp=?",
+    )
+    .bind(payload.uuid)
+    .bind(user_uuid)
+    .bind(payload.icon)
+    .bind(payload.url)
+    .bind(payload.name)
+    .bind(payload.username)
+    .bind(payload.password)
+    .bind(Local::now())
+    .fetch_all(&pool)
+    .await
+    .expect("Failed to save new password");
+    Json(passwords)
+}
 
 async fn edit_password() {}
 
