@@ -1,8 +1,12 @@
 # Keydungeon API
 
-## With IBM serverless functions
+## Written in Rust with:
 
-The IBM serverless API for keydungeon
+- Axum
+- Serde
+- Sqlx & Postgress
+- Zeroize
+- Secrecy (WIP)
 
 Open API V3.0.3 Spec:
 
