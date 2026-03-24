@@ -9,8 +9,8 @@ use crate::models::event::Event;
 
 pub fn routing() -> Router<Pool<Postgres>> {
     Router::new()
-        .route("/events/:user_uuid", get(get_events))
-        .route("/events/:user_uuid", post(save_events))
+        .route("/:user_uuid", get(get_events))
+        .route("/:user_uuid", post(save_events))
 }
 
 async fn get_events(
@@ -18,7 +18,7 @@ async fn get_events(
     Path(user_uuid): Path<String>,
 ) -> Json<Vec<Event>> {
     let events = sqlx::query_as::<_, Event>(
-        "select uuid, user_uuid, event_type, metadata, timestamp from events where user_uuid = ? limit 25",
+        "select uuid, user_uuid, event_type, metadata, timestamp from events where user_uuid = ? limit 50",
     )
     .bind(user_uuid)
     .fetch_all(&pool)

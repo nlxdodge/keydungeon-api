@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow};
 use uuid::Uuid;
@@ -7,4 +8,5 @@ pub struct User {
     pub uuid: Uuid,
     pub username: String,
     pub password: String,
+    pub timestamp: NaiveDateTime,
 }
