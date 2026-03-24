@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, types::chrono::NaiveDateTime};
 use uuid::Uuid;
-use zeroize::{Zeroize};
+use zeroize::Zeroize;
 
-#[derive(Serialize, Deserialize, FromRow, Zeroize)]
+#[derive(Serialize, Deserialize, Clone, FromRow)]
 pub struct Password {
     pub uuid: Uuid,
     pub user_uuid: Uuid,
@@ -11,7 +11,12 @@ pub struct Password {
     pub url: String,
     pub name: String,
     pub username: String,
-    #[zeroize(drop)]
     pub password: String,
     pub timestamp: NaiveDateTime,
+}
+
+impl Drop for Password {
+    fn drop(&mut self) {
+        self.password.zeroize();
+    }
 }

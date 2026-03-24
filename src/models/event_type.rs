@@ -1,6 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sqlx::Type;
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Type)]
+#[sqlx(type_name = "TEXT")]
 pub enum EventType {
     SignIn,
     SignOut,
@@ -11,5 +13,5 @@ pub enum EventType {
     CreateUser,
     ShowUser,
     EditUser,
-    DeleteUser
+    DeleteUser,
 }

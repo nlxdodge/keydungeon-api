@@ -2,12 +2,12 @@ use axum::Router;
 use log::{error, info};
 use sqlx::postgres::PgPoolOptions;
 
-use crate::resources::{password_resources, user_resource};
+use crate::resources::{event_resource, password_resources, user_resource};
 
 mod models;
 mod resources;
 
-const PORT: i32 = 3000;
+const PORT: i32 = 4321;
 
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
@@ -18,7 +18,8 @@ async fn main() -> Result<(), sqlx::Error> {
 
     let app = Router::new()
         .nest("/users", user_resource::routing())
-        .nest("/passwords", password_resources::routing());
+        .nest("/passwords", password_resources::routing())
+        .nest("/events", event_resource::routing());
 
     let shared_pool = pool.clone();
     let app = app.with_state(shared_pool);

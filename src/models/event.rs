@@ -1,9 +1,9 @@
 use crate::models::event_type::EventType;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, types::chrono::NaiveDateTime};
 use uuid::Uuid;
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, Deserialize, FromRow)]
 pub struct Event {
     uuid: Uuid,
     user_uuid: Uuid,
