@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, types::chrono::NaiveDateTime};
+use sqlx::{types::chrono::NaiveDateTime, FromRow};
 use uuid::Uuid;
 use zeroize::Zeroize;
 
 #[derive(Serialize, Deserialize, Clone, FromRow)]
 pub struct Password {
     pub uuid: Uuid,
-    pub user_uuid: Uuid,
     pub icon: String,
     pub url: String,
     pub name: String,

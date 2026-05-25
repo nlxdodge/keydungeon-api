@@ -1,4 +1,5 @@
-pub mod user;
+pub mod error;
 pub mod event;
 pub mod password;
-pub mod event_type;
+pub mod user;
+pub mod auth;

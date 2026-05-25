@@ -1,6 +1,6 @@
-use crate::models::event_type::EventType;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, types::chrono::NaiveDateTime};
+use sqlx::Type;
+use sqlx::{types::chrono::NaiveDateTime, FromRow};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, FromRow)]
@@ -10,4 +10,19 @@ pub struct Event {
     event_type: EventType,
     metadata: String,
     timestamp: NaiveDateTime,
+}
+
+#[derive(Serialize, Deserialize, Type)]
+#[sqlx(type_name = "TEXT")]
+pub enum EventType {
+    SignIn,
+    SignOut,
+    CreatePassword,
+    ShowPassword,
+    EditPassword,
+    DeletePassword,
+    CreateUser,
+    ShowUser,
+    EditUser,
+    DeleteUser,
 }
