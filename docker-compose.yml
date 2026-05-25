@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: keydungeon-postgres
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keydungeon"]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+    networks:
+      - keydungeon-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    container_name: keydungeon-api
+    ports:
+      - "4321:4321"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - keydungeon-network
+
+volumes:
+  postgres_data:
+
+networks:
+  keydungeon-network:
+    driver: bridge
