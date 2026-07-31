@@ -1,22 +1,20 @@
 use axum::{
+    Json, Router,
     extract::{Extension, State},
     http::StatusCode,
     routing::post,
-    Json, Router,
 };
 use chrono::Utc;
-use sqlx::{Pool, Postgres};
 use std::env;
 use uuid::Uuid;
 
-use crate::auth::jwt::TokenManager;
-use crate::helpers::password;
-use crate::models::error::Error;
 use crate::models::user::User;
 use crate::{
-    auth::claims::Claims,
+    handlers::claims::Claims,
     models::auth::{AuthRequest, AuthResponse},
 };
+use crate::{handlers::jwt::TokenManager, models::app_state::AppState};
+use crate::{helpers::password, models::error_response::ErrorResponse};
 
 fn get_jwt_valid_time() -> i64 {
     env::var("JWT_VALID_TIME")
@@ -25,7 +23,7 @@ fn get_jwt_valid_time() -> i64 {
         .unwrap_or(24)
 }
 
-pub fn routing() -> Router<Pool<Postgres>> {
+pub fn routing() -> Router<AppState> {
     Router::new()
         .route("/login", post(login))
         .route("/register", post(register))
@@ -33,13 +31,13 @@ pub fn routing() -> Router<Pool<Postgres>> {
 }
 
 async fn login(
-    State(pool): State<Pool<Postgres>>,
+    State(app_state): State<AppState>,
     Json(payload): Json<AuthRequest>,
-) -> Result<Json<AuthResponse>, (StatusCode, Json<Error>)> {
+) -> Result<Json<AuthResponse>, (StatusCode, Json<ErrorResponse>)> {
     if payload.username.is_empty() || payload.password.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(Error {
+            Json(ErrorResponse {
                 error: "Username and password are required".to_string(),
             }),
         ));
@@ -49,12 +47,12 @@ async fn login(
         "SELECT uuid, username, password, timestamp FROM users WHERE username = $1",
     )
     .bind(&payload.username)
-    .fetch_optional(&pool)
+    .fetch_optional(&app_state.db)
     .await
     .map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(Error {
+            Json(ErrorResponse {
                 error: "Database error".to_string(),
             }),
         )
@@ -62,7 +60,7 @@ async fn login(
     .ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(Error {
+            Json(ErrorResponse {
                 error: "Invalid username or password".to_string(),
             }),
         )
@@ -73,7 +71,7 @@ async fn login(
             if !is_valid {
                 return Err((
                     StatusCode::UNAUTHORIZED,
-                    Json(Error {
+                    Json(ErrorResponse {
                         error: "Invalid username or password".to_string(),
                     }),
                 ));
@@ -82,7 +80,7 @@ async fn login(
         Err(_) => {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(Error {
+                Json(ErrorResponse {
                     error: "Password verification failed".to_string(),
                 }),
             ));
@@ -91,31 +89,34 @@ async fn login(
 
     match generate_new_token(user.uuid) {
         Ok(token) => Ok(Json(token)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error { error: e }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )),
     }
 }
 
 /// Register endpoint - creates a new user and returns a JWT token
 async fn register(
-    State(pool): State<Pool<Postgres>>,
+    State(app_state): State<AppState>,
     Json(payload): Json<AuthRequest>,
-) -> Result<(StatusCode, Json<AuthResponse>), (StatusCode, Json<Error>)> {
+) -> Result<(StatusCode, Json<AuthResponse>), (StatusCode, Json<ErrorResponse>)> {
     if payload.username.is_empty() || payload.password.len() < 8 {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(Error {
+            Json(ErrorResponse {
                 error: "Username required, password must be at least 8 characters".to_string(),
             }),
         ));
     }
     let existing_user = sqlx::query("SELECT uuid FROM users WHERE username = $1")
         .bind(&payload.username)
-        .fetch_optional(&pool)
+        .fetch_optional(&app_state.db)
         .await
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(Error {
+                Json(ErrorResponse {
                     error: "Database error".to_string(),
                 }),
             )
@@ -124,7 +125,7 @@ async fn register(
     if existing_user.is_some() {
         return Err((
             StatusCode::CONFLICT,
-            Json(Error {
+            Json(ErrorResponse {
                 error: "Username already exists".to_string(),
             }),
         ));
@@ -135,7 +136,7 @@ async fn register(
         Err(_) => {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(Error {
+                Json(ErrorResponse {
                     error: "Failed to hash password".to_string(),
                 }),
             ));
@@ -149,12 +150,12 @@ async fn register(
         .bind(&payload.username)
         .bind(&hashed_password)
         .bind(now)
-        .execute(&pool)
+        .execute(&app_state.db)
         .await
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(Error {
+                Json(ErrorResponse {
                     error: "Failed to create user".to_string(),
                 }),
             )
@@ -162,17 +163,20 @@ async fn register(
 
     match generate_new_token(user_id) {
         Ok(token) => Ok((StatusCode::CREATED, Json(token))),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error { error: e }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )),
     }
 }
 
 async fn verify(
     Extension(claims): Extension<Claims>,
-) -> Result<Json<AuthResponse>, (StatusCode, Json<Error>)> {
+) -> Result<Json<AuthResponse>, (StatusCode, Json<ErrorResponse>)> {
     if claims.is_expired() {
         return Err((
             StatusCode::UNAUTHORIZED,
-            Json(Error {
+            Json(ErrorResponse {
                 error: "Token has expired, login again!".to_string(),
             }),
         ));
@@ -180,7 +184,10 @@ async fn verify(
 
     match generate_new_token(claims.sub) {
         Ok(token) => Ok(Json(token)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(Error { error: e }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )),
     }
 }
 

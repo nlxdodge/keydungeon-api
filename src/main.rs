@@ -1,64 +1,57 @@
-use axum::middleware;
-use axum::Router;
-use log::{error, info};
+use log::debug;
+use log::info;
+use sqlx::Error;
+use sqlx::Pool;
+use sqlx::Postgres;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
+use std::net::SocketAddr;
 
-use crate::auth::jwt::jwt_middleware;
-use crate::resources::{auth_resource, event_resource, password_resources, user_resource};
+use crate::models::app_state::AppState;
+use crate::repositories::event_repository::EventRepository;
+use crate::repositories::password_repository::PasswordRepository;
 
-mod auth;
-mod config;
+mod api;
+mod bcrypt_config;
+mod handlers;
 mod helpers;
 mod models;
-mod resources;
-
-const PORT: i32 = 4321;
+mod repositories;
+mod router;
 
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
-    // Load environment variables from .env file
     dotenvy::dotenv().ok();
-
-    // Initialize logging
     env_logger::init();
 
-    // Get database URL from environment variables
+    let port = env::var("PORT").unwrap_or_else(|_| "4321".to_string());
+    let pool = get_pool().await?;
+    let state: AppState = AppState {
+        db: pool.clone(),
+        events: EventRepository { pool: pool.clone() },
+        passwords: PasswordRepository { pool: pool.clone() },
+    };
+    let app = router::create_router(state);
+
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
+    info!("Started KeyDungeon api on port {port}");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn get_pool() -> Result<Pool<Postgres>, Error> {
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:password@localhost/test".to_string());
 
-    info!("Connecting to database: {}", database_url);
+    debug!("Connecting to database: {}", database_url);
 
-    let pool = PgPoolOptions::new()
+    PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
-        .await?;
-
-    let shared_pool = pool.clone();
-
-    // Public routes - no JWT middleware required
-    let public_routes = Router::new().nest("/auth", auth_resource::routing());
-
-    // Protected routes - JWT middleware required
-    let protected_routes = Router::new()
-        .nest("/users", user_resource::routing())
-        .nest("/passwords", password_resources::routing())
-        .nest("/events", event_resource::routing())
-        .layer(middleware::from_fn(jwt_middleware));
-
-    // Combine public and protected routes
-    let app = public_routes
-        .merge(protected_routes)
-        .with_state(shared_pool);
-
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{PORT}")).await;
-
-    if listener.is_ok() {
-        info!("Started server on port {PORT}");
-        axum::serve(listener.unwrap(), app).await.unwrap();
-    } else {
-        error!("Error while listening to port {PORT}");
-    }
-
-    Ok(())
+        .await
 }

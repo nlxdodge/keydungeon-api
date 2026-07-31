@@ -1,4 +1,4 @@
-use crate::auth::claims::Claims;
+use crate::handlers::claims::Claims;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]

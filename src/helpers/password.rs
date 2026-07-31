@@ -1,4 +1,4 @@
-use crate::config::BcryptConfig;
+use crate::bcrypt_config::BcryptConfig;
 
 #[derive(Debug)]
 pub enum PasswordError {

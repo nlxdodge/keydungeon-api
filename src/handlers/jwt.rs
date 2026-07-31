@@ -1,14 +1,14 @@
 use axum::{
     extract::Request,
-    http::{header::HeaderMap, StatusCode},
+    http::{StatusCode, header::HeaderMap},
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::claims::Claims;
+use crate::handlers::claims::Claims;
 
 /// Load JWT secret from environment variable or use default
 fn get_jwt_secret() -> Vec<u8> {

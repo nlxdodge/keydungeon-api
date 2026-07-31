@@ -1,15 +1,17 @@
+use chrono::DateTime;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use sqlx::Type;
-use sqlx::{types::chrono::NaiveDateTime, FromRow};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, FromRow)]
 pub struct Event {
-    uuid: Uuid,
-    user_uuid: Uuid,
-    event_type: EventType,
-    metadata: String,
-    timestamp: NaiveDateTime,
+    pub uuid: Uuid,
+    pub user_uuid: Uuid,
+    pub event_type: EventType,
+    pub metadata: String,
+    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -18,7 +20,8 @@ pub enum EventType {
     SignIn,
     SignOut,
     CreatePassword,
-    ShowPassword,
+    ShowPasswords,
+    RevealPassword,
     EditPassword,
     DeletePassword,
     CreateUser,

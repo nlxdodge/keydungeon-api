@@ -1,21 +1,15 @@
 use axum::{
+    Json, Router,
     extract::{Extension, Path, State},
     http::StatusCode,
     routing::{delete, get, patch},
-    Json, Router,
 };
-use sqlx::{Pool, Postgres};
 
-use crate::auth::claims::Claims;
-use crate::helpers::password;
 use crate::models::user::User;
+use crate::{handlers::claims::Claims, models::app_state::AppState};
+use crate::{helpers::password, models::error_response::ErrorResponse};
 
-#[derive(serde::Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-}
-
-pub fn routing() -> Router<Pool<Postgres>> {
+pub fn routing() -> Router<AppState> {
     Router::new()
         .route("/{uuid}", get(get_user))
         .route("/", patch(update_user))
@@ -23,7 +17,7 @@ pub fn routing() -> Router<Pool<Postgres>> {
 }
 
 async fn get_user(
-    State(pool): State<Pool<Postgres>>,
+    State(app_state): State<AppState>,
     Path(uuid): Path<String>,
     Extension(claims): Extension<Claims>,
 ) -> Json<Vec<User>> {
@@ -33,7 +27,7 @@ async fn get_user(
         "SELECT uuid, username, password, timestamp FROM users WHERE uuid = $1",
     )
     .bind(uuid)
-    .fetch_all(&pool)
+    .fetch_all(&app_state.db)
     .await
     .expect("Failed to fetch user");
 
@@ -41,7 +35,7 @@ async fn get_user(
 }
 
 async fn update_user(
-    State(pool): State<Pool<Postgres>>,
+    State(app_state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Json(payload): Json<User>,
 ) -> Result<Json<User>, (StatusCode, Json<ErrorResponse>)> {
@@ -63,7 +57,7 @@ async fn update_user(
         .bind(payload.uuid)
         .bind(payload.username)
         .bind(&hashed_password)
-        .fetch_one(&pool)
+        .fetch_one(&app_state.db)
         .await
         .map_err(|_| {
             (
@@ -78,7 +72,7 @@ async fn update_user(
 }
 
 async fn remove_user(
-    State(pool): State<Pool<Postgres>>,
+    State(app_state): State<AppState>,
     Path(request_uuid): Path<String>,
     Extension(claims): Extension<Claims>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -88,7 +82,7 @@ async fn remove_user(
 
     sqlx::query("DELETE FROM users WHERE uuid=$1")
         .bind(request_uuid)
-        .execute(&pool)
+        .execute(&app_state.db)
         .await
         .map_err(|_| {
             (
