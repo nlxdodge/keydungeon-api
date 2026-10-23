@@ -1,15 +1,15 @@
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::models::event::Event;
 
 #[derive(Clone)]
 pub struct EventRepository {
-    pub pool: PgPool,
+    pub pool: SqlitePool,
 }
 
 impl EventRepository {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 

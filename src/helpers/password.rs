@@ -1,4 +1,5 @@
-use crate::bcrypt_config::BcryptConfig;
+use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
+use password_hash::phc::SaltString;
 
 #[derive(Debug)]
 pub enum PasswordError {
@@ -16,12 +17,30 @@ impl std::fmt::Display for PasswordError {
 }
 
 /// Hash a password using bcrypt
-pub fn hash_password(password: &str) -> Result<String, PasswordError> {
-    let bcrypt_config = BcryptConfig::from_env();
-    bcrypt::hash(password, bcrypt_config.cost).map_err(|_| PasswordError::HashingFailed)
+pub fn hash(password: &str) -> Result<String, PasswordError> {
+    let argon2 = Argon2::default();
+    let salt = SaltString::generate();
+
+    let argon = Argon2::new_with_secret(
+        b"secret pepper",
+        Algorithm::default(),
+        Version::default(),
+        Params::default()
+    );
+
+    
+    let hash = argon2
+        .hash_password_with_salt(password.as_bytes(), &salt.as_bytes())
+        .map_err(|_| PasswordError::HashingFailed);
+        
+    Ok("test")
 }
 
 /// Verify a password against a bcrypt hash
-pub fn verify_password(password: &str, hash: &str) -> Result<bool, PasswordError> {
-    bcrypt::verify(password, hash).map_err(|_| PasswordError::VerificationFailed)
+pub fn verify(password: &str, hash: &str) -> Result<bool, PasswordError> {
+    let parsed_hash = PasswordHash::new(hash).map_err(|_| PasswordError::VerificationFailed)?;
+
+    Ok(Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok())
 }

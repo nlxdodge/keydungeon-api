@@ -14,9 +14,8 @@ use crate::handlers::claims::Claims;
 fn get_jwt_secret() -> Vec<u8> {
     dotenvy::var("JWT_SECRET")
         .unwrap_or_else(|_| {
-            log::warn!(
-                "JWT_SECRET not found in .env file, using default. Change this in production!"
-            );
+            //"JWT_SECRET not found in .env file, using default. Change this in production!"
+            
             "your-secret-key-change-in-production".to_string()
         })
         .into_bytes()

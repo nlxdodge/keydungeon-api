@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 use crate::repositories::{
     event_repository::EventRepository, password_repository::PasswordRepository,
@@ -6,7 +6,7 @@ use crate::repositories::{
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: PgPool,
+    pub db: SqlitePool,
     pub events: EventRepository,
     pub passwords: PasswordRepository,
 }

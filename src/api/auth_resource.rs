@@ -66,7 +66,7 @@ async fn login(
         )
     })?;
 
-    match password::verify_password(&payload.password, &user.password) {
+    match password::verify(&payload.password, &user.password) {
         Ok(is_valid) => {
             if !is_valid {
                 return Err((
@@ -131,7 +131,7 @@ async fn register(
         ));
     }
 
-    let hashed_password = match password::hash_password(&payload.password) {
+    let hashed_password = match password::hash(&payload.password) {
         Ok(hash) => hash,
         Err(_) => {
             return Err((

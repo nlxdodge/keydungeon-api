@@ -1,16 +1,16 @@
 use sqlx::Error;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::models::password::Password;
 
 #[derive(Clone)]
 pub struct PasswordRepository {
-    pub pool: PgPool,
+    pub pool: SqlitePool,
 }
 
 impl PasswordRepository {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 

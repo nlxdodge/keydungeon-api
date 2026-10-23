@@ -5,18 +5,31 @@ edition = "2024"
 authors = ["nlxdodge"]
 
 [dependencies]
-axum = { version = "0.8.9", features = ["macros"] }
-bcrypt = "0.19.3"
-log = "0.4.28"
-env_logger = "0.11.11"
-dotenvy = "0.15.7"
-serde_json = "1.0.149"
-jsonwebtoken = "11.0.0"
-serde = { version = "1.0.228", features = ["derive"] }
-tokio = { version = "1.52.1", features = ["full"] }
-secrecy = { version = "0.10.3", features = ["serde"] }
-zeroize = { version = "1.8.2", features = ["derive"] }
-sqlx = { version = "0.9.0", features = ["runtime-async-std", "postgres", "macros", "uuid", "chrono"] }
-uuid  = { version = "1.24.0", features = ["serde", "v4"] }
-chrono = { version = "0.4.45", features = ["serde"] }
-postgres = { version = "0.19.14", features = ["with-serde_json-1"] }
+# Web
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.7", features = ["trace", "cors", "limit", "timeout"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# DB - SQLite, single runtime
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "uuid", "chrono", "macros"] }
+uuid = { version = "1.29", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Auth & Security
+argon2 = "0.6" # for master password
+chacha20poly1305 = { version = "0.11" } # for vault encryption
+jsonwebtoken = "11.1"
+rand_core = { version = "0.10.1" }
+password-hash = "0.6.1"
+base64 = "0.23.1"
+
+# Secrets handling - good that you already have this, keep it
+secrecy = { version = "0.10", features = ["serde"] }
+zeroize = { version = "1.9", features = ["derive", "zeroize_derive"] }
+
+# Config / Observability
+dotenvy = "0.15"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

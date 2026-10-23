@@ -42,7 +42,7 @@ async fn update_user(
     let _authenticated_user_id = claims.sub;
 
     // Hash the new password using bcrypt
-    let hashed_password = password::hash_password(&payload.password).map_err(|_| {
+    let hashed_password = password::hash(&payload.password).map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
