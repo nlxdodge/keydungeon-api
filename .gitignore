@@ -132,3 +132,5 @@ dmypy.json
 keydungeon.db
 keydungeon.db-shm
 keydungeon.db-wal
+/data/
+/backups/

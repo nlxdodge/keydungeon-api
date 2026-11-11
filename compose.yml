@@ -6,13 +6,16 @@ services:
     container_name: keydungeon-api
     env_file: .env
     environment:
-      # Keep the SQLite database on the named volume instead of the image.
+      # Store the SQLite database in the bind-mounted host directory.
       DATABASE_URL: sqlite:///data/keydungeon.db
+      # Consistent VACUUM INTO snapshots, written to the backup bind mount.
+      BACKUP_DIR: /backups
+      BACKUP_MAX_FILES: "3"
     ports:
       - "4321:4321"
     volumes:
-      - keydungeon_data:/data
+      # Persist the database and backups on the host at ~/keydungeon/...
+      # On Linux, make sure both directories are writable by UID/GID 65532.
+      - ~/keydungeon/data:/data
+      - ~/keydungeon/backups:/backups
     restart: unless-stopped
-
-volumes:
-  keydungeon_data:

@@ -8,6 +8,7 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::handlers::jwt::TokenManager;
+use crate::helpers::backup;
 use crate::helpers::vault::Vault;
 use crate::models::app_state::AppState;
 use crate::repositories::event_repository::EventRepository;
@@ -38,6 +39,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     sqlx::raw_sql(include_str!("../init.sql"))
         .execute(&pool)
         .await?;
+
+    // Catch up with a backup if none exists or the newest is stale, then keep
+    // the scheduler alive for the lifetime of the process.
+    if let Err(error) = backup::backup_if_due(&pool).await {
+        tracing::error!(%error, "failed to run startup database backup");
+    }
+
+    let _backup_scheduler = match backup::start(pool.clone()).await {
+        Ok(scheduler) => Some(scheduler),
+        Err(error) => {
+            tracing::error!(%error, "failed to start database backup scheduler");
+            None
+        }
+    };
 
     let state = AppState {
         db: pool.clone(),

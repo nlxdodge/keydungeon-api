@@ -213,15 +213,17 @@ a 5 second busy timeout.
 
 Copy `.env.example` to `.env` and set the values:
 
-| Variable         | Required | Purpose                                                      |
-| ---------------- | -------- | ------------------------------------------------------------ |
-| `DATABASE_URL`   | No       | SQLite URL, defaults to `sqlite://keydungeon.db`             |
-| `VAULT_KEY`      | Yes      | Base64 32-byte ChaCha20-Poly1305 key                         |
-| `PASSWORD_PEPPER`| No*      | Server-side Argon2 pepper                                    |
-| `JWT_SECRET`     | No*      | HMAC secret for JWT signing                                  |
-| `JWT_VALID_TIME` | No       | Token lifetime in hours (default `24`)                       |
-| `RUST_LOG`       | No       | Tracing filter (default `info`)                              |
-| `PORT`           | No       | Listen port (default `4321`)                                 |
+| Variable           | Required | Purpose                                                      |
+| ------------------ | -------- | ------------------------------------------------------------ |
+| `DATABASE_URL`     | No       | SQLite URL, defaults to `sqlite://keydungeon.db`             |
+| `BACKUP_DIR`       | No       | Backup output directory (default `./backups`)                |
+| `BACKUP_MAX_FILES` | No       | Number of backups to keep (default `3`)                      |
+| `VAULT_KEY`        | Yes      | Base64 32-byte ChaCha20-Poly1305 key                         |
+| `PASSWORD_PEPPER`  | No*      | Server-side Argon2 pepper                                    |
+| `JWT_SECRET`       | No*      | HMAC secret for JWT signing                                  |
+| `JWT_VALID_TIME`   | No       | Token lifetime in hours (default `24`)                       |
+| `RUST_LOG`         | No       | Tracing filter (default `info`)                              |
+| `PORT`             | No       | Listen port (default `4321`)                                 |
 
 \* A development fallback exists, but the process logs a warning. Set strong
 random values in any real deployment.
@@ -247,8 +249,29 @@ Container:
 docker compose up --build
 ```
 
-The container stores SQLite on the `keydungeon_data` volume mounted at
-`/data`, and overrides `DATABASE_URL` to `sqlite:///data/keydungeon.db`.
+The container bind-mounts the host's `~/keydungeon/data` directory at `/data`
+and `~/keydungeon/backups` at `/backups`, and overrides `DATABASE_URL` to
+`sqlite:///data/keydungeon.db`, so the database is persisted on disk at
+`~/keydungeon/data/keydungeon.db`.
+
+### Backups
+
+The API runs an in-process scheduler (`tokio-cron-scheduler`) that creates a
+consistent SQLite snapshot every 6 hours using `VACUUM INTO`. Backups are
+written to `BACKUP_DIR` as `keydungeon-YYYYMMDD-HHMMSS.db`, first to a `.tmp`
+file and then renamed into place so partial files are never left behind. After
+each successful backup the oldest files are pruned, keeping the newest
+`BACKUP_MAX_FILES` (default 3). Scheduler startup failures are logged but do not
+prevent the API from starting.
+
+On startup the API also runs a catch-up snapshot when no backup exists or the
+newest one is older than 6 hours. This backs up a fresh deployment immediately
+while avoiding retention churn from frequent restarts. Set `BACKUP_ON_START` to
+`false` to disable it.
+
+`VACUUM INTO` produces a complete single-file copy, so it is safe to run while
+the API is serving requests. Back up `~/keydungeon/backups` to external storage
+instead of copying the live WAL-mode database files.
 
 ## Verification
 

@@ -18,8 +18,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp target/release/keydungeon-api /app/keydungeon-api && \
     strip /app/keydungeon-api
 
-# Prepare the data directory with the UID/GID used by the distroless nonroot user.
-RUN mkdir -p /data/tmp && chown -R 65532:65532 /data
+# Prepare the data and backup directories with the UID/GID used by the
+# distroless nonroot user. When these are bind-mounted from the host, this is
+# only a fallback for the image's own filesystem.
+RUN mkdir -p /data /backups && chown -R 65532:65532 /data /backups
 
 # ---------- Runtime stage ----------
 # Distroless = a container image with no shell, package manager, or toolchain.
@@ -31,10 +33,13 @@ FROM gcr.io/distroless/cc-debian12:nonroot
 
 WORKDIR /app
 COPY --from=builder --chown=65532:65532 /data /data
+COPY --from=builder --chown=65532:65532 /backups /backups
 COPY --from=builder /app/keydungeon-api /app/keydungeon-api
 
 ENV DATABASE_URL=sqlite:///data/keydungeon.db \
-    TMPDIR=/data/tmp
+    BACKUP_DIR=/backups \
+    BACKUP_MAX_FILES=3 \
+    TMPDIR=/tmp
 
 EXPOSE 4321
 USER nonroot:nonroot
