@@ -119,7 +119,9 @@ data.
 - **List**: `GET /passwords/` loads a page of rows for the authenticated user
   and decrypts each secret before returning JSON. Pages are controlled with the
   `page` and `limit` query parameters (default `20`, max `100`), and the
-  response includes the user's total entry count.
+  response includes the user's total entry count. An optional `search`
+  parameter filters entries by a case-insensitive substring match on the name;
+  `total` then reflects the filtered count.
 - **Reveal**: `GET /passwords/{uuid}` decrypts one secret, scoped by both the
   entry UUID and the authenticated user UUID.
 - **Update**: `PATCH /passwords/{uuid}` re-encrypts the submitted secret and

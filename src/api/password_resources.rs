@@ -28,6 +28,31 @@ pub struct PasswordRequest {
     pub password: String,
 }
 
+/// Query parameters for listing vault entries.
+#[derive(Debug, Deserialize)]
+struct PasswordQuery {
+    page: Option<u32>,
+    limit: Option<u32>,
+    /// Case-insensitive substring match on the entry name.
+    search: Option<String>,
+}
+
+impl PasswordQuery {
+    fn pagination(&self) -> Pagination {
+        Pagination {
+            page: self.page,
+            limit: self.limit,
+        }
+    }
+
+    fn search_term(&self) -> Option<&str> {
+        self.search
+            .as_deref()
+            .map(str::trim)
+            .filter(|search| !search.is_empty())
+    }
+}
+
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
 fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
@@ -70,16 +95,18 @@ async fn get_passwords(
     State(app_state): State<AppState>,
     Extension(claims): Extension<Claims>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Query(pagination): Query<Pagination>,
+    Query(query): Query<PasswordQuery>,
 ) -> Result<Json<Paginated<Password>>, ApiError> {
     let user_uuid = claims.sub;
-    let page = pagination
+    let page = query
+        .pagination()
         .resolve()
         .map_err(|message| api_error(StatusCode::BAD_REQUEST, message))?;
+    let search = query.search_term();
 
     let passwords = app_state
         .passwords
-        .get_passwords(user_uuid, page.limit, page.offset())
+        .get_passwords(user_uuid, page.limit, page.offset(), search)
         .await
         .map_err(|error| {
             tracing::error!(%error, "failed to fetch passwords");
@@ -91,7 +118,7 @@ async fn get_passwords(
 
     let total = app_state
         .passwords
-        .count_passwords(user_uuid)
+        .count_passwords(user_uuid, search)
         .await
         .map_err(|error| {
             tracing::error!(%error, "failed to count passwords");

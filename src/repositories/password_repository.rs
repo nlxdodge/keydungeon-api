@@ -59,12 +59,16 @@ impl PasswordRepository {
         user_uuid: Uuid,
         limit: u32,
         offset: i64,
+        search: Option<&str>,
     ) -> Result<Vec<Password>, PasswordRepositoryError> {
         let mut passwords = sqlx::query_as::<_, Password>(
             "SELECT uuid, user_uuid, icon, url, name, username, password, timestamp \
-             FROM passwords WHERE user_uuid = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3",
+             FROM passwords \
+             WHERE user_uuid = $1 AND ($2 IS NULL OR name LIKE $2 ESCAPE '\\') \
+             ORDER BY timestamp DESC LIMIT $3 OFFSET $4",
         )
         .bind(user_uuid)
+        .bind(search.map(like_pattern))
         .bind(i64::from(limit))
         .bind(offset)
         .fetch_all(&self.pool)
@@ -77,12 +81,19 @@ impl PasswordRepository {
         Ok(passwords)
     }
 
-    pub async fn count_passwords(&self, user_uuid: Uuid) -> Result<u64, PasswordRepositoryError> {
-        let count =
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM passwords WHERE user_uuid = $1")
-                .bind(user_uuid)
-                .fetch_one(&self.pool)
-                .await?;
+    pub async fn count_passwords(
+        &self,
+        user_uuid: Uuid,
+        search: Option<&str>,
+    ) -> Result<u64, PasswordRepositoryError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM passwords \
+             WHERE user_uuid = $1 AND ($2 IS NULL OR name LIKE $2 ESCAPE '\\')",
+        )
+        .bind(user_uuid)
+        .bind(search.map(like_pattern))
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(count as u64)
     }
@@ -178,5 +189,33 @@ impl PasswordRepository {
     ) -> Result<Password, PasswordRepositoryError> {
         password.password = self.vault.decrypt(&password.password)?.to_string();
         Ok(password)
+    }
+}
+
+/// Build a `%term%` pattern, escaping SQL `LIKE` wildcards so a search for
+/// `100%` or `a_b` is matched literally.
+fn like_pattern(search: &str) -> String {
+    let escaped = search
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+
+    format!("%{escaped}%")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::like_pattern;
+
+    #[test]
+    fn wraps_a_plain_search_term() {
+        assert_eq!(like_pattern("gmail"), "%gmail%");
+    }
+
+    #[test]
+    fn escapes_like_wildcards() {
+        assert_eq!(like_pattern("100%"), "%100\\%%");
+        assert_eq!(like_pattern("a_b"), "%a\\_b%");
+        assert_eq!(like_pattern("back\\slash"), "%back\\\\slash%");
     }
 }
