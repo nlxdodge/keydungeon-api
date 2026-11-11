@@ -1,21 +1,22 @@
 use std::net::SocketAddr;
 
-use crate::models::app_state::AppState;
-use crate::models::error_response::ErrorResponse;
-use crate::models::event::Event;
-use crate::{handlers::claims::Claims, models::event::EventType};
-
-use crate::models::password::Password;
-use axum::extract::ConnectInfo;
 use axum::{
     Json, Router,
-    extract::{Extension, Path, State},
+    extract::{ConnectInfo, Extension, Path, Query, State},
     http::StatusCode,
     routing::{delete, get, patch, post},
 };
 use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
+
+use crate::handlers::claims::Claims;
+use crate::handlers::events::record_event;
+use crate::models::app_state::AppState;
+use crate::models::error_response::ErrorResponse;
+use crate::models::event::EventType;
+use crate::models::pagination::{Paginated, Pagination};
+use crate::models::password::Password;
 
 #[derive(Deserialize)]
 pub struct PasswordRequest {
@@ -27,9 +28,25 @@ pub struct PasswordRequest {
     pub password: String,
 }
 
-fn map_password(user_uuid: Uuid, request: PasswordRequest) -> Password {
+type ApiError = (StatusCode, Json<ErrorResponse>);
+
+fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
+    (
+        status,
+        Json(ErrorResponse {
+            error: message.into(),
+        }),
+    )
+}
+
+fn parse_uuid(raw: &str) -> Result<Uuid, ApiError> {
+    Uuid::parse_str(raw)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid password UUID format"))
+}
+
+fn map_password(user_uuid: Uuid, uuid: Uuid, request: PasswordRequest) -> Password {
     Password {
-        uuid: request.uuid,
+        uuid,
         user_uuid,
         icon: request.icon,
         url: request.url,
@@ -43,8 +60,8 @@ fn map_password(user_uuid: Uuid, request: PasswordRequest) -> Password {
 pub fn routing() -> Router<AppState> {
     Router::new()
         .route("/", get(get_passwords))
-        .route("/{uuid}", get(get_password))
         .route("/", post(save_password))
+        .route("/{uuid}", get(get_password))
         .route("/{uuid}", patch(edit_password))
         .route("/{uuid}", delete(remove_password))
 }
@@ -53,26 +70,46 @@ async fn get_passwords(
     State(app_state): State<AppState>,
     Extension(claims): Extension<Claims>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> Result<Json<Vec<Password>>, (StatusCode, Json<ErrorResponse>)> {
+    Query(pagination): Query<Pagination>,
+) -> Result<Json<Paginated<Password>>, ApiError> {
     let user_uuid = claims.sub;
+    let page = pagination
+        .resolve()
+        .map_err(|message| api_error(StatusCode::BAD_REQUEST, message))?;
 
-    let _ = app_state.events.save_event(Event {
-        uuid: Uuid::new_v4(),
+    let passwords = app_state
+        .passwords
+        .get_passwords(user_uuid, page.limit, page.offset())
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to fetch passwords");
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch passwords",
+            )
+        })?;
+
+    let total = app_state
+        .passwords
+        .count_passwords(user_uuid)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to count passwords");
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to count passwords",
+            )
+        })?;
+
+    record_event(
+        &app_state,
         user_uuid,
-        event_type: EventType::ShowPasswords,
-        metadata: format!("IP address: {}", addr.ip()),
-        timestamp: Utc::now(),
-    }).await ;
+        EventType::ShowPasswords,
+        format!("IP address: {}", addr.ip()),
+    )
+    .await;
 
-    match app_state.passwords.get_passwords(user_uuid).await {
-        Ok(passwords) => Ok(Json(passwords)),
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to fetch passwords".to_string(),
-            }),
-        )),
-    }
+    Ok(Json(Paginated::new(passwords, page, total)))
 }
 
 async fn get_password(
@@ -80,51 +117,32 @@ async fn get_password(
     Extension(claims): Extension<Claims>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(uuid): Path<String>,
-) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<String>, ApiError> {
     let user_uuid = claims.sub;
-    let password_uuid = Uuid::parse_str(&uuid).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid password UUID format".to_string(),
-            }),
-        )
-    })?;
+    let password_uuid = parse_uuid(&uuid)?;
 
-    let owned = app_state
-        .passwords
-        .owns_password(password_uuid, user_uuid)
-        .await;
-    if !owned {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Password not found or unauthorized".to_string(),
-            }),
-        ));
-    }
-
-    let _ = app_state.events.save_event(Event {
-        uuid: Uuid::new_v4(),
-        user_uuid,
-        event_type: EventType::RevealPassword,
-        metadata: format!("IP addres: {}", addr),
-        timestamp: Utc::now(),
-    }).await;
-
-    match app_state
+    let password = app_state
         .passwords
         .get_password(user_uuid, password_uuid)
         .await
-    {
-        Ok(password) => Ok(password),
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to delete password".to_string(),
-            }),
-        )),
-    }
+        .map_err(|error| {
+            tracing::error!(%error, "failed to reveal password");
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch password",
+            )
+        })?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "Password not found"))?;
+
+    record_event(
+        &app_state,
+        user_uuid,
+        EventType::RevealPassword,
+        format!("Password UUID: {password_uuid}, IP address: {}", addr.ip()),
+    )
+    .await;
+
+    Ok(Json(password))
 }
 
 async fn save_password(
@@ -132,33 +150,28 @@ async fn save_password(
     Extension(claims): Extension<Claims>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(request): Json<PasswordRequest>,
-) -> Result<Json<Password>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<Password>), ApiError> {
     let user_uuid = claims.sub;
+    let password = map_password(user_uuid, request.uuid, request);
 
-    let _ = app_state
-        .events
-        .save_event(Event {
-            uuid: Uuid::new_v4(),
-            user_uuid,
-            event_type: EventType::CreatePassword,
-            metadata: format!("Password name: {}, IP address: {}", request.name, addr),
-            timestamp: Utc::now(),
-        })
-        .await;
-
-    match app_state
+    let saved = app_state
         .passwords
-        .save_password(map_password(user_uuid, request))
+        .save_password(password)
         .await
-    {
-        Ok(password) => Ok(Json(password)),
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to save password".to_string(),
-            }),
-        )),
-    }
+        .map_err(|error| {
+            tracing::error!(%error, "failed to save password");
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to save password")
+        })?;
+
+    record_event(
+        &app_state,
+        user_uuid,
+        EventType::CreatePassword,
+        format!("Password name: {}, IP address: {}", saved.name, addr.ip()),
+    )
+    .await;
+
+    Ok((StatusCode::CREATED, Json(saved)))
 }
 
 async fn edit_password(
@@ -167,54 +180,33 @@ async fn edit_password(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(uuid): Path<String>,
     Json(request): Json<PasswordRequest>,
-) -> Result<Json<Password>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<Password>, ApiError> {
     let user_uuid = claims.sub;
-    let password_uuid = Uuid::parse_str(&uuid).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid password UUID".to_string(),
-            }),
-        )
-    })?;
+    let password_uuid = parse_uuid(&uuid)?;
+    let password = map_password(user_uuid, password_uuid, request);
 
-    let owned = app_state
+    let updated = app_state
         .passwords
-        .owns_password(password_uuid, user_uuid)
-        .await;
-    if !owned {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Password not found or unauthorized".to_string(),
-            }),
-        ));
-    }
-
-    let _ = app_state
-        .events
-        .save_event(Event {
-            uuid: Uuid::new_v4(),
-            user_uuid,
-            event_type: EventType::EditPassword,
-            metadata: format!("Password name: {}, IP address: {}", request.name, addr),
-            timestamp: Utc::now(),
-        })
-        .await;
-
-    match app_state
-        .passwords
-        .update_password(map_password(user_uuid, request))
+        .update_password(user_uuid, password)
         .await
-    {
-        Ok(password) => Ok(Json(password)),
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to update password".to_string(),
-            }),
-        )),
-    }
+        .map_err(|error| {
+            tracing::error!(%error, "failed to update password");
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update password",
+            )
+        })?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "Password not found"))?;
+
+    record_event(
+        &app_state,
+        user_uuid,
+        EventType::EditPassword,
+        format!("Password name: {}, IP address: {}", updated.name, addr.ip()),
+    )
+    .await;
+
+    Ok(Json(updated))
 }
 
 async fn remove_password(
@@ -222,48 +214,33 @@ async fn remove_password(
     Extension(claims): Extension<Claims>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(uuid): Path<String>,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<StatusCode, ApiError> {
     let user_uuid = claims.sub;
-    let password_uuid = Uuid::parse_str(&uuid).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid password UUID format".to_string(),
-            }),
-        )
-    })?;
+    let password_uuid = parse_uuid(&uuid)?;
 
-    let owned = app_state
+    let deleted = app_state
         .passwords
-        .owns_password(password_uuid, user_uuid)
-        .await;
-    if !owned {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Password not found or unauthorized".to_string(),
-            }),
-        ));
+        .delete_password(user_uuid, password_uuid)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to delete password");
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to delete password",
+            )
+        })?;
+
+    if !deleted {
+        return Err(api_error(StatusCode::NOT_FOUND, "Password not found"));
     }
 
-    let _ = app_state
-        .events
-        .save_event(Event {
-            uuid: Uuid::new_v4(),
-            user_uuid,
-            event_type: EventType::DeletePassword,
-            metadata: format!("IP addres: {}", addr),
-            timestamp: Utc::now(),
-        })
-        .await;
+    record_event(
+        &app_state,
+        user_uuid,
+        EventType::DeletePassword,
+        format!("Password UUID: {password_uuid}, IP address: {}", addr.ip()),
+    )
+    .await;
 
-    match app_state.passwords.delete_password(password_uuid).await {
-        Ok(_) => Ok(()),
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to delete password".to_string(),
-            }),
-        )),
-    }
+    Ok(StatusCode::NO_CONTENT)
 }

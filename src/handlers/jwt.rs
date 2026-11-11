@@ -1,41 +1,42 @@
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::{StatusCode, header::HeaderMap},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::handlers::claims::Claims;
+use crate::models::app_state::AppState;
 
-/// Load JWT secret from environment variable or use default
-fn get_jwt_secret() -> Vec<u8> {
-    dotenvy::var("JWT_SECRET")
-        .unwrap_or_else(|_| {
-            //"JWT_SECRET not found in .env file, using default. Change this in production!"
-            
-            "your-secret-key-change-in-production".to_string()
-        })
-        .into_bytes()
+/// Load the JWT secret from the environment.
+fn get_jwt_secret() -> SecretString {
+    SecretString::from(
+        dotenvy::var("JWT_SECRET")
+            .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string()),
+    )
 }
 
-/// Token manager for creating and validating JWT tokens
+/// Token manager for creating and validating JWT tokens.
 #[derive(Clone)]
 pub struct TokenManager {
-    secret: Vec<u8>,
+    secret: SecretString,
 }
 
 impl TokenManager {
-    /// Create a new TokenManager with the default secret (loaded from JWT_SECRET env var)
+    /// Create a new TokenManager with the secret from `JWT_SECRET`.
     pub fn new() -> Self {
-        Self {
-            secret: get_jwt_secret(),
-        }
+        Self::from_secret(get_jwt_secret())
     }
 
-    /// Generate a JWT token with a custom expiration duration
+    pub fn from_secret(secret: SecretString) -> Self {
+        Self { secret }
+    }
+
+    /// Generate a JWT token with a custom expiration duration.
     pub fn generate_token_with_duration(
         &self,
         user_id: Uuid,
@@ -45,18 +46,18 @@ impl TokenManager {
         let token = encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret(&self.secret),
+            &EncodingKey::from_secret(self.secret.expose_secret().as_bytes()),
         )
         .map_err(|_| TokenError::TokenGenerationFailed)?;
 
         Ok(token)
     }
 
-    /// Validate and decode a JWT token
+    /// Validate and decode a JWT token.
     pub fn validate_token(&self, token: &str) -> Result<Claims, TokenError> {
         let data = decode::<Claims>(
             token,
-            &DecodingKey::from_secret(&self.secret),
+            &DecodingKey::from_secret(self.secret.expose_secret().as_bytes()),
             &Validation::default(),
         )
         .map_err(|_| TokenError::InvalidToken)?;
@@ -68,7 +69,7 @@ impl TokenManager {
         Ok(data.claims)
     }
 
-    /// Extract token from Authorization header (Bearer scheme)
+    /// Extract token from Authorization header (Bearer scheme).
     pub fn extract_token_from_header(&self, headers: &HeaderMap) -> Result<String, TokenError> {
         let auth_header = headers
             .get("authorization")
@@ -89,7 +90,7 @@ impl Default for TokenManager {
     }
 }
 
-/// JWT Token Errors
+/// JWT Token Errors.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TokenError {
     MissingAuthHeader,
@@ -125,17 +126,16 @@ impl IntoResponse for TokenError {
     }
 }
 
-/// JWT Authentication Middleware
-pub async fn jwt_middleware(mut request: Request, next: Next) -> Result<Response, TokenError> {
-    let token_manager = TokenManager::new();
+/// JWT authentication middleware.
+pub async fn jwt_middleware(
+    State(app_state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, TokenError> {
+    let token = app_state.jwt.extract_token_from_header(request.headers())?;
+    let claims = app_state.jwt.validate_token(&token)?;
 
-    // Extract token from header
-    let token = token_manager.extract_token_from_header(request.headers())?;
-
-    // Validate token
-    let claims = token_manager.validate_token(&token)?;
-
-    // Insert claims into request extensions for downstream handlers
+    // Insert claims into request extensions for downstream handlers.
     request.extensions_mut().insert(claims);
 
     Ok(next.run(request).await)

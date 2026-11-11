@@ -1,39 +1,18 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: keydungeon-postgres
-    env_file: .env
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keydungeon"]
-      interval: 15s
-      timeout: 15s
-      retries: 5
-    networks:
-      - keydungeon-network
-
   app:
     build:
       context: .
-      dockerfile: Dockerfile
-    env_file: .env
+      dockerfile: Containerfile
     container_name: keydungeon-api
+    env_file: .env
+    environment:
+      # Keep the SQLite database on the named volume instead of the image.
+      DATABASE_URL: sqlite:///data/keydungeon.db
     ports:
       - "4321:4321"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    volumes:
+      - keydungeon_data:/data
     restart: unless-stopped
-    networks:
-      - keydungeon-network
 
 volumes:
-  postgres_data:
-
-networks:
-  keydungeon-network:
-    driver: bridge
+  keydungeon_data:

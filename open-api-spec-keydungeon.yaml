@@ -9,164 +9,279 @@ servers:
   - url: https://key.gerbenveenhof.nl/api
     description: The keydungeon live API
 
+tags:
+  - name: health
+    description: Liveness checks
+  - name: auth
+    description: Registration, login and token verification
+  - name: user
+    description: Manage the authenticated user's account
+  - name: password
+    description: Manage the authenticated user's vault entries
+  - name: event
+    description: Read the authenticated user's audit log
+
 paths:
-  /user:
-    post:
+  /health:
+    get:
       tags:
-        - "user"
-      description: Create a new user
+        - "health"
+      description: Returns process and database liveness.
       security: []
       responses:
-        200:
-          description: Returns the info of the newly created user
+        '200':
+          description: Service health
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
-        400:
-          description: When the user has not been created, and returns an error
+                $ref: '#/components/schemas/Health'
 
-  /user/{UUID}:
-    parameters:
-      - name: UUID
+  /auth/register:
+    post:
+      tags:
+        - "auth"
+      description: Create a new user account and return a JWT.
+      security: []
+      requestBody:
         required: true
-        in: path
-        description: "**UUID**. *Example: 02c60b51-a30d-4eb5-9c31-30fac6c586cf*. The UUID of the given user."
-        schema:
-          type: string
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '201':
+          description: The account was created and a token was issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags:
+        - "auth"
+      description: Authenticate with a username and password and return a JWT.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: Authenticated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/verify:
+    post:
+      tags:
+        - "auth"
+      description: Validate the bearer token and confirm the user still exists.
+      responses:
+        '200':
+          description: The token is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{UUID}:
+    parameters:
+      - $ref: '#/components/parameters/UserUuid'
     get:
       tags:
         - "user"
-      description: Returns a given user by it's UUID
+      description: Returns the authenticated user. A user may only read their own account.
       responses:
-        200:
+        '200':
           description: The requested user
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
-        404:
-          $ref: "#/components/responses/NotFound"
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       tags:
         - "user"
-      description: Patches the given user by it's UUID, only a logged in user can do this of itself
-      responses:
-        200:
-          description: Updated a user with the given info
-        404:
-          $ref: "#/components/responses/NotFound"
-    delete:
-      tags:
-        - "user"
-      description: Delete a given user by it's UUID, only the logged in user can do this of itself
-      responses:
-        200:
-          description: The requested user is deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        404:
-          $ref: "#/components/responses/NotFound"
-
-  /password:
-    get:
-      tags:
-        - "password"
-      description: Returns a list of passwords (can be paged with parameters)
-      responses:
-        200:
-          description: Returns a list of passwords (optionally paginated)
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Password"
-    post:
-      tags:
-        - "password"
-      description: Create a new password for the user in the authentication token
-      responses:
-        200:
-          description: Returns the info of the newly created password
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Password"
-        400:
-          description: When the password has not been created, and returns an error
-
-  /password/{UUID}:
-    parameters:
-      - name: UUID
+      description: Update the authenticated user's username and/or master password. A user may only update their own account.
+      requestBody:
         required: true
-        in: path
-        description: "**UUID**. *Example: 02c60b51-a30d-4eb5-9c31-30fac6c586cf*. The UUID of the given user."
-        schema:
-          type: string
-    get:
-      tags:
-        - "password"
-      description: Return the given password
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
       responses:
-        200:
-          description: Returns the password object
+        '200':
+          description: The updated user
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Password"
-        404:
-          $ref: "#/components/responses/NotFound"
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+        - "user"
+      description: Delete the authenticated user. A user may only delete their own account.
+      responses:
+        '204':
+          description: The user was deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /passwords:
+    get:
+      tags:
+        - "password"
+      description: Returns a page of the authenticated user's vault entries, newest first.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of vault entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPasswords'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+        - "password"
+      description: Create a new vault entry for the authenticated user. The client supplies the entry UUID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRequest'
+      responses:
+        '201':
+          description: The created vault entry, with the secret decrypted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Password'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /passwords/{UUID}:
+    parameters:
+      - $ref: '#/components/parameters/PasswordUuid'
+    get:
+      tags:
+        - "password"
+      description: Reveal a single vault secret. Returns the decrypted password as a JSON string.
+      responses:
+        '200':
+          description: The decrypted secret
+          content:
+            application/json:
+              schema:
+                type: string
+                description: The decrypted password value.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       tags:
         - "password"
-      description: Patches the given password by it's UUID, only a logged in user can do this of itself
+      description: Replace a vault entry. The full entry must be supplied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRequest'
       responses:
-        200:
-          description: Updated a password with the given info
-        404:
-          $ref: "#/components/responses/NotFound"
+        '200':
+          description: The updated vault entry, with the secret decrypted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Password'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags:
         - "password"
-      description: Delete a given UUID password
+      description: Delete a vault entry.
       responses:
-        200:
-          description: The password has been deleted
-        404:
-          $ref: "#/components/responses/NotFound"
+        '204':
+          description: The vault entry was deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /event:
+  /events:
     get:
       tags:
         - "event"
-      description: List all events from a user's token
+      description: Returns a page of the authenticated user's audit events, newest first.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
       responses:
-        200:
-          description: Returns a list of the events based, orderded by latest (time)
+        '200':
+          description: A page of audit events
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Event"
-
-    post:
-      tags:
-        - "event"
-      description: Create a new event coupled to a user
-      security: []
-      responses:
-        200:
-          description: Returns the info of the newly created event
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Event"
-        400:
-          description: When the event has not been created, and returns an error
+                $ref: '#/components/schemas/PaginatedEvents'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
 components:
   schemas:
@@ -175,60 +290,308 @@ components:
       properties:
         uuid:
           type: string
+          format: uuid
           description: Formatted as a UUID
-        email:
+        username:
           type: string
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - uuid
+        - username
+        - timestamp
+
+    UpdateUserRequest:
+      type: object
+      description: At least one field must be provided.
+      properties:
+        username:
+          type: string
+          minLength: 1
         password:
           type: string
+          minLength: 8
+      additionalProperties: false
 
     Password:
       type: object
       properties:
         uuid:
           type: string
+          format: uuid
           description: Formatted as a UUID
-        name:
+        user_uuid:
+          type: string
+          format: uuid
+          description: The UUID of the user that owns this entry.
+        icon:
           type: string
         url:
+          type: string
+        name:
           type: string
         username:
           type: string
         password:
           type: string
+          description: The decrypted secret.
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - uuid
+        - user_uuid
+        - icon
+        - url
+        - name
+        - username
+        - password
+        - timestamp
+
+    PasswordRequest:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The client-generated UUID for the entry.
+        icon:
+          type: string
+        url:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - uuid
+        - icon
+        - url
+        - name
+        - username
+        - password
+      additionalProperties: false
 
     Event:
       type: object
       properties:
         uuid:
           type: string
+          format: uuid
           description: Formatted as a UUID
-        eventType:
+        user_uuid:
+          type: string
+          format: uuid
+          description: The UUID of the user this event belongs to.
+        event_type:
           $ref: '#/components/schemas/EventType'
         metadata:
           type: string
           description: JSON encoded metadata for the request.
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - uuid
+        - user_uuid
+        - event_type
+        - metadata
+        - timestamp
 
     EventType:
       type: string
       enum:
-        - SignIn,
-        - SignOut,
-        - CreatePassword,
-        - ShowPassword,
-        - EditPassword,
-        - DeletePassword,
-        - CreateUser,
-        - ShowUser,
-        - EditUser,
+        - SignIn
+        - SignOut
+        - CreatePassword
+        - ShowPasswords
+        - RevealPassword
+        - EditPassword
+        - DeletePassword
+        - CreateUser
+        - ShowUser
+        - EditUser
         - DeleteUser
 
+    AuthRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The signed JWT bearer token.
+        claims:
+          $ref: '#/components/schemas/Claims'
+      required:
+        - token
+        - claims
+
+    Claims:
+      type: object
+      properties:
+        sub:
+          type: string
+          format: uuid
+          description: The authenticated user UUID.
+        exp:
+          type: integer
+          description: Expiry as a Unix timestamp in seconds.
+        iat:
+          type: integer
+          description: Issued-at as a Unix timestamp in seconds.
+      required:
+        - sub
+        - exp
+        - iat
+
+    Health:
+      type: object
+      properties:
+        endpoints:
+          type: boolean
+        database:
+          type: boolean
+      required:
+        - endpoints
+        - database
+
+    PaginatedPasswords:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Password'
+        page:
+          type: integer
+          description: The current page number.
+        limit:
+          type: integer
+          description: The page size that was applied.
+        total:
+          type: integer
+          description: Total number of vault entries for the user, across all pages.
+      required:
+        - data
+        - page
+        - limit
+        - total
+
+    PaginatedEvents:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        page:
+          type: integer
+          description: The current page number.
+        limit:
+          type: integer
+          description: The page size that was applied.
+        total:
+          type: integer
+          description: Total number of audit events for the user, across all pages.
+      required:
+        - data
+        - page
+        - limit
+        - total
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+  parameters:
+    UserUuid:
+      name: UUID
+      required: true
+      in: path
+      description: "**UUID**. *Example: 02c60b51-a30d-4eb5-9c31-30fac6c586cf*. The UUID of the given user."
+      schema:
+        type: string
+        format: uuid
+    PasswordUuid:
+      name: UUID
+      required: true
+      in: path
+      description: "**UUID**. *Example: 02c60b51-a30d-4eb5-9c31-30fac6c586cf*. The UUID of the given password."
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Page number, starting at 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size, between 1 and 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
   responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The token does not belong to the requested user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Entity not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: The resource already exists (for example the username is taken)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
   securitySchemes:
     api_token:
-      description: The JTW token to access content of a user
+      description: The JWT token used to access a user's content
       type: http
       scheme: bearer
       bearerFormat: JWT

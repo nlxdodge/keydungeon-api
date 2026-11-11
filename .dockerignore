@@ -1,0 +1,16 @@
+# Keep the build context small and avoid leaking local state into the image.
+target/
+.git/
+.gitignore
+
+# Local secrets and machine-specific config
+.env
+.env.*
+!.env.example
+
+# Not needed by `cargo build`
+Containerfile
+compose*.yml
+README.md
+PROJECT.md
+open-api-spec-keydungeon.yaml
