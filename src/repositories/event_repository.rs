@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -38,6 +39,21 @@ impl EventRepository {
                 .await?;
 
         Ok(count as u64)
+    }
+
+    /// Deletes events older than `cutoff`, except deletion events.
+    ///
+    /// `DeleteUser` and `DeletePassword` (and any future `Delete*` type) are
+    /// kept indefinitely as part of the audit trail.
+    pub async fn delete_expired_events(&self, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            "DELETE FROM events WHERE timestamp < $1 AND event_type NOT LIKE 'Delete%'",
+        )
+        .bind(cutoff)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 
     pub async fn save_event(&self, event: Event) -> Result<Event, sqlx::Error> {

@@ -57,6 +57,7 @@ src/
     events.rs                   fire-and-forget audit event helper
   helpers/
     password.rs                 Argon2id hashing/verification (+ pepper)
+    retention.rs                scheduled audit event cleanup
     vault.rs                    ChaCha20-Poly1305 encrypt/decrypt
   models/
     app_state.rs                shared state: pool, repositories, JWT manager
@@ -161,6 +162,12 @@ with the `page` and `limit` query parameters (default `20`, max `100`). The
 table intentionally has no foreign key to `users`, so the audit trail
 (including the final `DeleteUser` event) survives account deletion.
 
+An in-process retention scheduler prunes non-deletion audit events older than
+`EVENT_RETENTION_DAYS` (default `90`) once a day according to
+`EVENT_CLEANUP_CRON` (default `0 0 3 * * *`). `DeleteUser`, `DeletePassword`,
+and any future `Delete*` event type are retained indefinitely. Cleanup only
+runs on the scheduler, never as a startup step.
+
 ## API
 
 Public:
@@ -222,6 +229,8 @@ Copy `.env.example` to `.env` and set the values:
 | `PASSWORD_PEPPER`  | No*      | Server-side Argon2 pepper                                    |
 | `JWT_SECRET`       | No*      | HMAC secret for JWT signing                                  |
 | `JWT_VALID_TIME`   | No       | Token lifetime in hours (default `24`)                       |
+| `EVENT_RETENTION_DAYS` | No   | Days to keep non-delete audit events (default `90`)          |
+| `EVENT_CLEANUP_CRON` | No     | Cron schedule for audit cleanup (default `0 0 3 * * *`)      |
 | `RUST_LOG`         | No       | Tracing filter (default `info`)                              |
 | `PORT`             | No       | Listen port (default `4321`)                                 |
 

@@ -9,6 +9,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 
 use crate::handlers::jwt::TokenManager;
 use crate::helpers::backup;
+use crate::helpers::retention;
 use crate::helpers::vault::Vault;
 use crate::models::app_state::AppState;
 use crate::repositories::event_repository::EventRepository;
@@ -50,6 +51,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Ok(scheduler) => Some(scheduler),
         Err(error) => {
             tracing::error!(%error, "failed to start database backup scheduler");
+            None
+        }
+    };
+
+    let _retention_scheduler = match retention::start(pool.clone()).await {
+        Ok(scheduler) => Some(scheduler),
+        Err(error) => {
+            tracing::error!(%error, "failed to start audit event retention scheduler");
             None
         }
     };
