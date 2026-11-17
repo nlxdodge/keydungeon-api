@@ -26,7 +26,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - keydungeon
+      - global
     labels:
       - "traefik.http.routers.keydungeonapi.rule=Host(`key.gerbenveenhof.nl`) && PathPrefix(`/api`)"
       - "traefik.http.middlewares.keydungeonapi-stripprefix.stripprefix.prefixes=/api"
@@ -34,9 +34,9 @@ services:
       - "traefik.http.services.keydungeonapi.loadbalancer.server.port=4321"
       - "traefik.http.routers.keydungeonapi.tls.certresolver=letsencrypt"
       - "traefik.http.routers.keydungeonapi.entrypoints=websecure"
-      - "traefik.docker.network=keydungeon"
+      - "traefik.docker.network=global"
       - "traefik.enable=true"
 
 networks:
   keydungeon:
-    name: keydungeon
+    name: global
