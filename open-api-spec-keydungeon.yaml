@@ -30,11 +30,9 @@ paths:
       security: []
       responses:
         '200':
-          description: Service health
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Health'
+          description: Service and database are healthy
+        '503':
+          description: Database is unavailable
 
   /auth/register:
     post:
@@ -457,17 +455,6 @@ components:
         - sub
         - exp
         - iat
-
-    Health:
-      type: object
-      properties:
-        endpoints:
-          type: boolean
-        database:
-          type: boolean
-      required:
-        - endpoints
-        - database
 
     PaginatedPasswords:
       type: object

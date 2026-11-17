@@ -28,6 +28,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     dotenvy::dotenv().ok();
     init_tracing();
 
+    if env::args().nth(1).as_deref() == Some("healthcheck") {
+        return healthcheck().await;
+    }
+
     warn_on_default_secret("PASSWORD_PEPPER");
     warn_on_default_secret("JWT_SECRET");
 
@@ -81,6 +85,43 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .await?;
 
+    Ok(())
+}
+
+async fn healthcheck() -> Result<(), Box<dyn Error>> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let port = env::var("PORT").unwrap_or_else(|_| "4321".to_string());
+    let probe = async {
+        let address = format!("127.0.0.1:{port}");
+        let mut stream = tokio::net::TcpStream::connect(&address).await?;
+        stream
+            .write_all(
+                format!("GET /health HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await?;
+
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await?;
+
+        let status = response
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1));
+
+        if status == Some("200") {
+            Ok::<(), Box<dyn Error>>(())
+        } else {
+            Err(format!(
+                "unexpected response from /health: {}",
+                response.lines().next().unwrap_or_default()
+            )
+            .into())
+        }
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), probe).await??;
     Ok(())
 }
 

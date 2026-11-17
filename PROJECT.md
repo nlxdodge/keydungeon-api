@@ -66,7 +66,6 @@ src/
     password.rs                 vault entry row
     event.rs                    audit event row + event type enum
     error_response.rs           uniform `{ "error": "..." }` body
-    health.rs                   health response
   repositories/
     user_repository.rs          signup and credential mutations
     password_repository.rs      encrypted vault reads/writes
@@ -174,7 +173,7 @@ Public:
 
 | Method | Path             | Purpose                                   |
 | ------ | ---------------- | ----------------------------------------- |
-| `GET`  | `/health`        | Process and database liveness             |
+| `GET`  | `/health`        | Process and database liveness (503 when DB is unavailable) |
 | `POST` | `/auth/register` | Create an account and return a JWT        |
 | `POST` | `/auth/login`    | Authenticate and return a JWT             |
 
