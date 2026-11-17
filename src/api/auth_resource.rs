@@ -116,6 +116,18 @@ async fn register(
         ));
     }
 
+    let user_count = app_state.users.count().await.map_err(|error| {
+        tracing::error!(%error, "failed to count users");
+        api_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
+    })?;
+
+    if user_count >= app_state.max_users {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "Maximum number of users reached, registration is closed",
+        ));
+    }
+
     if app_state
         .users
         .username_exists(username)
@@ -197,4 +209,107 @@ fn auth_response(jwt: &TokenManager, user_uuid: Uuid) -> Result<AuthResponse, Ap
     let claims = Claims::with_duration(user_uuid, valid_time);
 
     Ok(AuthResponse { token, claims })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use secrecy::SecretString;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    use super::*;
+    use crate::helpers::vault::Vault;
+    use crate::repositories::{
+        event_repository::EventRepository, password_repository::PasswordRepository,
+        user_repository::UserRepository,
+    };
+
+    async fn test_state(max_users: i64) -> AppState {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .in_memory(true)
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+
+        sqlx::raw_sql(include_str!("../../init.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        AppState {
+            db: pool.clone(),
+            events: EventRepository::new(pool.clone()),
+            passwords: PasswordRepository::new(
+                pool.clone(),
+                Vault::from_base64("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").unwrap(),
+            ),
+            users: UserRepository::new(pool),
+            jwt: TokenManager::from_secret(SecretString::from("test-secret".to_string())),
+            max_users,
+        }
+    }
+
+    #[tokio::test]
+    async fn register_is_rejected_when_user_limit_is_reached() {
+        let state = test_state(1).await;
+        state
+            .users
+            .create("existing", "password123".to_string())
+            .await
+            .unwrap();
+
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
+        let result = register(
+            State(state.clone()),
+            ConnectInfo(address),
+            Json(AuthRequest {
+                username: "newcomer".to_string(),
+                password: "password123".to_string(),
+            }),
+        )
+        .await;
+
+        let status = match result {
+            Ok(_) => panic!("registration should be rejected at the limit"),
+            Err((status, body)) => {
+                assert_eq!(
+                    body.error,
+                    "Maximum number of users reached, registration is closed"
+                );
+                status
+            }
+        };
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(state.users.count().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn register_succeeds_below_the_user_limit() {
+        let state = test_state(1).await;
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
+
+        let result = register(
+            State(state.clone()),
+            ConnectInfo(address),
+            Json(AuthRequest {
+                username: "newcomer".to_string(),
+                password: "password123".to_string(),
+            }),
+        )
+        .await;
+
+        let status = match result {
+            Ok((status, _)) => status,
+            Err((status, body)) => panic!("registration failed with {status}: {}", body.error),
+        };
+
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(state.users.count().await.unwrap(), 1);
+    }
 }

@@ -13,4 +13,5 @@ pub struct AppState {
     pub passwords: PasswordRepository,
     pub users: UserRepository,
     pub jwt: TokenManager,
+    pub max_users: i64,
 }

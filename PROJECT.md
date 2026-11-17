@@ -79,8 +79,10 @@ User CRUD is deliberately narrow. There is no public "list all users" or
 "update any user" endpoint.
 
 - **Create**: `POST /auth/register` creates the account. The handler validates
-  input, calls `UserRepository::create`, and the repository hashes the master
-  password with Argon2id before inserting the row.
+  input, checks that the database has fewer users than `MAX_USERS` (default
+  `10`), calls `UserRepository::create`, and the repository hashes the master
+  password with Argon2id before inserting the row. Registrations return `403`
+  once the limit is reached.
 - **Read**: `GET /users/{uuid}` returns the authenticated user's own profile.
   It refuses to return another user's record.
 - **Update**: `PATCH /users/{uuid}` updates the current user's username and/or
@@ -222,6 +224,7 @@ Copy `.env.example` to `.env` and set the values:
 | Variable           | Required | Purpose                                                      |
 | ------------------ | -------- | ------------------------------------------------------------ |
 | `DATABASE_URL`     | No       | SQLite URL, defaults to `sqlite://keydungeon.db`             |
+| `MAX_USERS`        | No       | Sign-up cap; registrations blocked once reached (default `10`) |
 | `BACKUP_DIR`       | No       | Backup output directory (default `./backups`)                |
 | `BACKUP_MAX_FILES` | No       | Number of backups to keep (default `3`)                      |
 | `VAULT_KEY`        | Yes      | Base64 32-byte ChaCha20-Poly1305 key                         |

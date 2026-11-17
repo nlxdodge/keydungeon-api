@@ -67,12 +67,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
+    let max_users = max_users_from_env();
+    tracing::info!(max_users, "user registration limit");
+
     let state = AppState {
         db: pool.clone(),
         events: EventRepository::new(pool.clone()),
         passwords: PasswordRepository::new(pool.clone(), vault),
         users: UserRepository::new(pool.clone()),
         jwt: TokenManager::new(),
+        max_users,
     };
     let app = router::create_router(state);
 
@@ -144,6 +148,14 @@ fn warn_on_default_secret(name: &str) {
             "environment variable is missing or uses a placeholder, using an insecure development value"
         );
     }
+}
+
+fn max_users_from_env() -> i64 {
+    env::var("MAX_USERS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(10)
 }
 
 async fn get_pool() -> Result<SqlitePool, sqlx::Error> {

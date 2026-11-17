@@ -79,6 +79,13 @@ impl UserRepository {
         .map_err(Into::into)
     }
 
+    pub async fn count(&self) -> Result<i64, UserRepositoryError> {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn username_exists(&self, username: &str) -> Result<bool, UserRepositoryError> {
         let count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE username = $1")
             .bind(username)
