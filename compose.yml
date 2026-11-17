@@ -23,8 +23,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    networks:
-      - global
     labels:
       - "traefik.http.routers.keydungeonapi.rule=Host(`key.gerbenveenhof.nl`) && PathPrefix(`/api`)"
       - "traefik.http.middlewares.keydungeonapi-stripprefix.stripprefix.prefixes=/api"
