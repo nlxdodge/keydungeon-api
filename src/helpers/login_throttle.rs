@@ -46,10 +46,8 @@ impl LoginThrottle {
             .filter(|attempts| attempts.len() >= self.max_failed_attempts)
             .filter_map(|attempts| attempts.get(attempts.len() - self.max_failed_attempts))
             .map(|attempt| {
-                self.window
-                    .saturating_sub(now.duration_since(*attempt))
-                    .as_secs()
-                    .max(1)
+                let remaining = self.window.saturating_sub(now.duration_since(*attempt));
+                (remaining.as_secs_f64().ceil() as u64).max(1)
             })
             .max()
     }
