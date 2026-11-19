@@ -238,6 +238,10 @@ Copy `.env.example` to `.env` and set the values:
 | `RUST_LOG`         | No       | Tracing filter (default `info`)                              |
 | `PORT`             | No       | Listen port (default `4321`)                                 |
 
+Login failures are tracked in memory per process and expire after the configured
+window. In a multi-instance deployment, each instance has its own counters; use a
+shared rate-limit store if limits must apply across instances.
+
 \* A development fallback exists, but the process logs a warning. Set strong
 random values in any real deployment.
 
