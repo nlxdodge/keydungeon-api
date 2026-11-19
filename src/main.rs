@@ -9,6 +9,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 
 use crate::handlers::jwt::TokenManager;
 use crate::helpers::backup;
+use crate::helpers::login_throttle::LoginThrottle;
 use crate::helpers::retention;
 use crate::helpers::vault::Vault;
 use crate::models::app_state::AppState;
@@ -77,6 +78,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         users: UserRepository::new(pool.clone()),
         jwt: TokenManager::new(),
         max_users,
+        login_throttle: LoginThrottle::from_env(),
     };
     let app = router::create_router(state);
 

@@ -1,6 +1,7 @@
 use sqlx::SqlitePool;
 
 use crate::handlers::jwt::TokenManager;
+use crate::helpers::login_throttle::LoginThrottle;
 use crate::repositories::{
     event_repository::EventRepository, password_repository::PasswordRepository,
     user_repository::UserRepository,
@@ -14,4 +15,5 @@ pub struct AppState {
     pub users: UserRepository,
     pub jwt: TokenManager,
     pub max_users: i64,
+    pub login_throttle: LoginThrottle,
 }

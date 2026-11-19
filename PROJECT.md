@@ -225,6 +225,8 @@ Copy `.env.example` to `.env` and set the values:
 | ------------------ | -------- | ------------------------------------------------------------ |
 | `DATABASE_URL`     | No       | SQLite URL, defaults to `sqlite://keydungeon.db`             |
 | `MAX_USERS`        | No       | Sign-up cap; registrations blocked once reached (default `10`) |
+| `LOGIN_MAX_FAILED_ATTEMPTS` | No | Failed attempts allowed per IP and IP/username pair in the window (default `5`) |
+| `LOGIN_ATTEMPT_WINDOW_SECONDS` | No | Rolling login-failure window in seconds (default `300`) |
 | `BACKUP_DIR`       | No       | Backup output directory (default `./backups`)                |
 | `BACKUP_MAX_FILES` | No       | Number of backups to keep (default `3`)                      |
 | `VAULT_KEY`        | Yes      | Base64 32-byte ChaCha20-Poly1305 key                         |

@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, State},
-    http::StatusCode,
+    http::{HeaderMap, HeaderValue, StatusCode, header::RETRY_AFTER},
     routing::post,
 };
 use uuid::Uuid;
@@ -19,13 +19,29 @@ use crate::models::error_response::ErrorResponse;
 use crate::models::event::EventType;
 use crate::repositories::user_repository::UserRepositoryError;
 
-type ApiError = (StatusCode, Json<ErrorResponse>);
+type ApiError = (StatusCode, HeaderMap, Json<ErrorResponse>);
 
 fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
     (
         status,
+        HeaderMap::new(),
         Json(ErrorResponse {
             error: message.into(),
+        }),
+    )
+}
+
+fn login_rate_limit_error(retry_after: u64) -> ApiError {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        RETRY_AFTER,
+        HeaderValue::from_str(&retry_after.to_string()).expect("integer is a valid header value"),
+    );
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        headers,
+        Json(ErrorResponse {
+            error: "Too many login attempts. Please try again later.".to_string(),
         }),
     )
 }
@@ -63,7 +79,11 @@ async fn login(
         ));
     }
 
-    let user = app_state
+    if let Some(retry_after) = app_state.login_throttle.retry_after(addr.ip(), username) {
+        return Err(login_rate_limit_error(retry_after));
+    }
+
+    let Some(user) = app_state
         .users
         .find_by_username(username)
         .await
@@ -71,7 +91,13 @@ async fn login(
             tracing::error!(%error, "failed to look up user");
             api_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
         })?
-        .ok_or_else(|| api_error(StatusCode::UNAUTHORIZED, "Invalid username or password"))?;
+    else {
+        app_state.login_throttle.record_failure(addr.ip(), username);
+        return Err(api_error(
+            StatusCode::UNAUTHORIZED,
+            "Invalid username or password",
+        ));
+    };
 
     let valid = password::verify_async(payload.password, user.password.clone())
         .await
@@ -84,6 +110,7 @@ async fn login(
         })?;
 
     if !valid {
+        app_state.login_throttle.record_failure(addr.ip(), username);
         return Err(api_error(
             StatusCode::UNAUTHORIZED,
             "Invalid username or password",
@@ -251,6 +278,39 @@ mod tests {
             users: UserRepository::new(pool),
             jwt: TokenManager::from_secret(SecretString::from("test-secret".to_string())),
             max_users,
+            login_throttle: crate::helpers::login_throttle::LoginThrottle::from_env(),
+        }
+    }
+
+    #[tokio::test]
+    async fn login_throttle_returns_429_and_retry_after() {
+        let mut state = test_state(10).await;
+        state.login_throttle = crate::helpers::login_throttle::LoginThrottle::new(
+            1,
+            std::time::Duration::from_secs(60),
+        );
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
+        let credentials = || {
+            Json(AuthRequest {
+                username: "missing-user".to_string(),
+                password: "wrong-password".to_string(),
+            })
+        };
+
+        let first = login(State(state.clone()), ConnectInfo(address), credentials()).await;
+        assert!(matches!(first, Err((StatusCode::UNAUTHORIZED, _, _))));
+
+        let second = login(State(state), ConnectInfo(address), credentials()).await;
+        match second {
+            Ok(_) => panic!("login should be throttled"),
+            Err((status, headers, body)) => {
+                assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+                assert_eq!(headers[RETRY_AFTER], "60");
+                assert_eq!(
+                    body.error,
+                    "Too many login attempts. Please try again later."
+                );
+            }
         }
     }
 
@@ -276,7 +336,7 @@ mod tests {
 
         let status = match result {
             Ok(_) => panic!("registration should be rejected at the limit"),
-            Err((status, body)) => {
+            Err((status, _, body)) => {
                 assert_eq!(
                     body.error,
                     "Maximum number of users reached, registration is closed"
@@ -306,7 +366,7 @@ mod tests {
 
         let status = match result {
             Ok((status, _)) => status,
-            Err((status, body)) => panic!("registration failed with {status}: {}", body.error),
+            Err((status, _, body)) => panic!("registration failed with {status}: {}", body.error),
         };
 
         assert_eq!(status, StatusCode::CREATED);
